@@ -28,7 +28,7 @@ router = APIRouter(prefix="/api")
 # Request / Response Schemas
 class CreateJobRequest(BaseModel):
     prompt: str
-    num_thumbnails: int
+    num_images: int
     snapshot_url: str
 
 class CreateJobResponse(BaseModel):
@@ -47,7 +47,7 @@ class JobResponse(BaseModel):
     status: str
     prompt: str
     snapshot_url: str
-    num_thumbnails: int
+    num_images: int
     images: list[ImageResponse]
 
 @router.post("/upload-snapshot")
@@ -63,17 +63,17 @@ async def upload_snapshot(file: UploadFile = File(...)):
 
 @router.post("/job", response_model=CreateJobResponse)
 async def create_job(request: CreateJobRequest, session: Session = Depends(get_session)):
-    if request.num_thumbnails < 1 and request.num_thumbnails > len(STYLE_ORDER):
-        raise HTTPException(status_code=400, detail=f"Number of thumbnails must be between 1 and {len(STYLE_ORDER)}")
+    if request.num_images < 1 or request.num_images > len(STYLE_ORDER):
+        raise HTTPException(status_code=400, detail=f"Number of images must be between 1 and {len(STYLE_ORDER)}")
 
     job = Job(
         prompt=request.prompt,
         snapshot_url=request.snapshot_url,
-        num_thumbnails=request.num_thumbnails,
+        num_images=request.num_images,
     )
     session.add(job)
 
-    styles = STYLE_ORDER[:request.num_thumbnails]
+    styles = STYLE_ORDER[:request.num_images]
     for style_name in styles:
         image = Image(
             job_id=job.id,
@@ -87,7 +87,38 @@ async def create_job(request: CreateJobRequest, session: Session = Depends(get_s
 
     return CreateJobResponse(job_id=job.id)
 
-@router.get("jobs/{job_id}", response_model=JobResponse)
+@router.get("/jobs", response_model=list[JobResponse])
+async def list_jobs(session: Session = Depends(get_session)):
+    jobs = session.exec(select(Job).order_by(Job.created_at.desc())).all()
+    response: list[JobResponse] = []
+    for job in jobs:
+        images = session.exec(select(Image).where(Image.job_id == job.id)).all()
+        image_responses: list[ImageResponse] = []
+        for image in images:
+            variants = get_variants(image.image_url) if image.image_url else None
+            image_responses.append(
+                ImageResponse(
+                    id=image.id,
+                    style_name=image.style_name,
+                    status=image.status,
+                    image_url=image.image_url,
+                    error_message=image.error_message,
+                    variants=variants,
+                )
+            )
+        response.append(
+            JobResponse(
+                id=job.id,
+                status=job.status,
+                prompt=job.prompt,
+                snapshot_url=job.snapshot_url,
+                num_images=job.num_images,
+                images=image_responses,
+            )
+        )
+    return response
+
+@router.get("/jobs/{job_id}", response_model=JobResponse)
 async def get_job(job_id: str, session: Session = Depends(get_session)):
     job = session.get(Job, job_id)
     if not job:
@@ -102,7 +133,7 @@ async def get_job(job_id: str, session: Session = Depends(get_session)):
                 id=image.id,
                 style_name=image.style_name,
                 status=image.status,
-                imagekit_url=image.image_url,
+                image_url=image.image_url,
                 error_message=image.error_message,
                 variants=variants,
             )
@@ -113,25 +144,12 @@ async def get_job(job_id: str, session: Session = Depends(get_session)):
         status=job.status,
         prompt=job.prompt,
         snapshot_url=job.snapshot_url,
-        num_thumbnails=job.num_thumbnails,
+        num_images=job.num_images,
         images=image_responses,
     )
 
-@router.get("jobs/{job_id}/stream")
+@router.get("/jobs/{job_id}/stream")
 async def stream_job(job_id: str):
-    """
-    loop for every 1.5 s:
-
-    get_image
-
-    for each image:
-        if new + completed = send image ready
-        if new + failed = send image failed
-
-    if all done:
-        send job complete
-        exit loop
-    """
     async def event_generator():
         from database import engine
         sent_images = set()
@@ -143,10 +161,7 @@ async def stream_job(job_id: str):
                     data = json.dumps({
                         "error": "Job not found"
                     })
-                    yield f"""
-                        event: error\n
-                        data: {data}\n\n
-                    """
+                    yield f"event: error\ndata: {data}\n\n"
                     return
 
                 images = session.exec(
@@ -157,51 +172,42 @@ async def stream_job(job_id: str):
                     if image.id not in sent_images:
                         if image.status == "completed":
                             sent_images.add(image.id)
-                            yield_image_ready(image)
+                            yield format_image_ready(image)
                         elif image.status == "failed":
                             sent_images.add(image.id)
-                            yield_image_failed(image)
+                            yield format_image_failed(image)
                 
                 all_images_processed = all(image.status in ["completed", "failed"] for image in images)
                 if all_images_processed and len(sent_images) == len(images):
-                    yield_job_complete(job)
+                    yield format_job_complete(job)
                     return
 
             await asyncio.sleep(1.5)
     
-    def yield_image_ready(image: Image):
-        variants = get_variants(image.image_url)
+    def format_image_ready(image: Image):
+        variants = get_variants(image.image_url) if image.image_url else None
         data = json.dumps({
             "image_id": image.id,
             "style_name": image.style_name,
             "image_url": image.image_url,
             "variants": variants,
         })
-        yield f"""
-            event: image_ready\n
-            data: {data}\n\n
-        """
+        return f"event: image_ready\ndata: {data}\n\n"
     
-    def yield_image_failed(image: Image):
+    def format_image_failed(image: Image):
         data = json.dumps({
             "image_id": image.id,
             "style_name": image.style_name,
             "error": image.error_message,
         })
-        yield f"""
-            event: image_failed\n
-            data: {data}\n\n
-        """
+        return f"event: image_failed\ndata: {data}\n\n"
     
-    def yield_job_complete(job: Job):
+    def format_job_complete(job: Job):
         data = json.dumps({
             "job_id": job.id,
             "status": job.status
         })
-        yield f"""
-            event: job_completed\n
-            data: {data}\n\n
-        """
+        return f"event: job_completed\ndata: {data}\n\n"
 
     return StreamingResponse(
         event_generator(),

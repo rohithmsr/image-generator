@@ -50,7 +50,7 @@ async def generate_single_image(image_id: str, prompt: str, snapshot_url: str):
         session.commit()
 
     # AI call
-    style_prompt = STYLE_ORDER[style_name]
+    style_prompt = STYLES[style_name]
     try:
         image_bytes = await generate_image(prompt, style_prompt, snapshot_url)
         with Session(engine) as session:
