@@ -15,6 +15,7 @@ from services.imagekit_service import upload_file
 from fastapi import UploadFile
 from fastapi import File
 from pydantic import BaseModel
+from typing import Union
 import logging
 import json
 
@@ -37,9 +38,9 @@ class ImageResponse(BaseModel):
     id: str
     style_name: str
     status: str
-    imagekit_url: str | None = None
-    error_message: str | None = None
-    variants: dict | None = None
+    image_url: Union[str, None] = None
+    error_message: Union[str, None] = None
+    variants: Union[dict, None] = None
 
 class JobResponse(BaseModel):
     id: str
