@@ -14,22 +14,29 @@ async def generate_image(prompt: str, style_prompt: str, snapshot_url: str) -> b
     """
 
     full_prompt = (
-        f"{style_prompt}\n\n",
-        f"User request: {prompt}\n\n",
+        f"{style_prompt}\n\n"
+        f"User request: {prompt}\n\n"
         "IMPORTANT: The generated image should predominantly feature the image given as the snapshot URL. Keep their likeness accurate"
     )
 
     response = await client.responses.create(
-        model="gpt-4o-mini",
+        model="gpt-5.4-mini",
         input=[
-            {"type": "text", "text": full_prompt},
-            {"type": "image_url", "image_url": {"url": snapshot_url}}
+            {
+                "type": "message",
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": full_prompt},
+                    {"type": "input_image", "image_url": snapshot_url}
+                ]
+            }
         ],
         tools=[
             {
                 "type": "image_generation",
-                "model": "gpt-image-1-mini",
-                "size": "1536×1024",
+                # "model": "gpt-image-1-mini",
+                "model": "gpt-image-2",
+                "size": "1536x1024",
                 "quality": "low",
                 "output_format": "png"
             }
