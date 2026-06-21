@@ -102,9 +102,9 @@ async def process_job(job_id: str):
         session.add(job)
         session.commit()
 
-    prompt = job.prompt
-    snapshot_url = job.snapshot_url
-    image_ids = [image.id for image in job.images]
+        prompt = job.prompt
+        snapshot_url = job.snapshot_url
+        image_ids = [image.id for image in job.images]
 
     # Create a background task for each image
     tasks = [generate_single_image(image_id, prompt, snapshot_url) for image_id in image_ids]
@@ -115,10 +115,11 @@ async def process_job(job_id: str):
             select(Image).where(Image.job_id == job_id)
         ).all()
 
-        if all(image.status == "failed" for image in images):
-            job.status = "failed"
-        else:
-            job.status = "completed"
-
-        session.add(job)
-        session.commit()
+        db_job = session.get(Job, job_id)
+        if db_job:
+            if all(image.status == "failed" for image in images):
+                db_job.status = "failed"
+            else:
+                db_job.status = "completed"
+            session.add(db_job)
+            session.commit()

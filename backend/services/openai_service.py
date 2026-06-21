@@ -19,7 +19,7 @@ async def generate_image(prompt: str, style_prompt: str, snapshot_url: str) -> b
         "IMPORTANT: The generated image should predominantly feature the image given as the snapshot URL. Keep their likeness accurate"
     )
 
-    response = client.responses.create(
+    response = await client.responses.create(
         model="gpt-4o-mini",
         input=[
             {"type": "text", "text": full_prompt},

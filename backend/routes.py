@@ -1,7 +1,7 @@
 from pydantic._internal import _schema_generation_shared
 from starlette.responses import StreamingResponse
 from services.imagekit_service import get_variants
-from sqlalchemy import select
+from sqlmodel import select
 import asyncio
 from services.generator import process_job
 from models import Job
@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from services.generator import STYLE_ORDER
 from database import get_session
 from fastapi import Depends
-from sqlalchemy.orm import Session
+from sqlmodel import Session
 from services.imagekit_service import upload_file
 from fastapi import UploadFile
 from fastapi import File
@@ -148,13 +148,22 @@ async def get_job(job_id: str, session: Session = Depends(get_session)):
         images=image_responses,
     )
 
+from fastapi import Request
+
 @router.get("/jobs/{job_id}/stream")
-async def stream_job(job_id: str):
+async def stream_job(job_id: str, request: Request):
     async def event_generator():
         from database import engine
         sent_images = set()
+        max_duration = 300.0  # 5 minutes max duration
+        elapsed = 0.0
+        interval = 1.5
 
-        while True:
+        while elapsed < max_duration:
+            # Check if the client closed the connection
+            if await request.is_disconnected():
+                return
+
             with Session(engine) as session:
                 job = session.get(Job, job_id)
                 if not job:
@@ -182,7 +191,17 @@ async def stream_job(job_id: str):
                     yield format_job_complete(job)
                     return
 
-            await asyncio.sleep(1.5)
+            # Keep-alive heartbeat to prevent firewalls/proxies from timing out
+            yield ": keep-alive\n\n"
+
+            await asyncio.sleep(interval)
+            elapsed += interval
+
+        # Timeout reached
+        data = json.dumps({
+            "error": "Image generation tracking timed out."
+        })
+        yield f"event: error\ndata: {data}\n\n"
     
     def format_image_ready(image: Image):
         variants = get_variants(image.image_url) if image.image_url else None
