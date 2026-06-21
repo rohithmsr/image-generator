@@ -11,3 +11,11 @@ wheels/
 
 # Environmental variables
 .env
+
+# Node NPM
+.DS_Store
+/node_modules/
+
+# React Router
+/.react-router/
+/build/
