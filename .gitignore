@@ -22,3 +22,7 @@ wheels/
 # React Router
 /.react-router/
 /build/
+
+# DB
+*.db
+**/*.db
