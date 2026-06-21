@@ -29,7 +29,7 @@ async def generate_image(prompt: str, style_prompt: str, snapshot_url: str) -> b
             {
                 "type": "image_generation",
                 "model": "gpt-image-1-mini",
-                "size": "1024x1024",
+                "size": "1536×1024",
                 "quality": "low",
                 "output_format": "png"
             }

@@ -16,6 +16,7 @@ class Image(SQLModel, table=True):
     style_name: str = Field(default="")
     status: str = Field(default="pending")
     error_message: Optional[str] = Field(default=None)
+    image_url: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=_now)
 
     job: Optional["Job"] = Relationship(back_populates="images")
